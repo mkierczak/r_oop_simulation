@@ -2,19 +2,23 @@ library(R6)
 
 Agent <- R6Class("Agent",
   public = list(
+    # Public data
     state = character(),
+    
+    # Public methods
     initialize = function(state = "healthy") {
       self$state <- state
     },
-    update_state = function(sick_prob, recovery_prob, death_prob) {
+    
+    update_state = function(probs) {
       if (self$state == "healthy") { # If agent is healthy it can either stay healthy or get infected
         new_state <- sample(x = c("healthy", "sick"), 
                        size = 1, 
-                       prob = c(1-sick_prob, sick_prob))
+                       prob = c(1 - probs['sick'], probs['sick']))
       } else if (self$state == "sick") { # A sick agent can continue being sick, recover and become immune or die
         new_state <- sample(x = c("sick", "immune", "dead"), 
                        size = 1, 
-                       prob = c(1-(recovery_prob + death_prob), recovery_prob, death_prob))
+                       prob = c(1 - (probs['recovery'] + probs['death']), probs['recovery'], probs['death']))
       
       } else {
         new_state <- self$state # Immune and dead states do not change
@@ -26,9 +30,11 @@ Agent <- R6Class("Agent",
 
 World <- R6Class("World",
   public = list(
+    # Public data
     size = NULL,
     world = NULL,
     
+    # Public methods
     initialize = function(size) {
       self$size <- size
       self$world <- matrix(vector("list", size * size), nrow = size, ncol = size)
@@ -63,7 +69,7 @@ World <- R6Class("World",
       self$world <- new_world
     },
     
-    update_states = function(beta, recovery_prob, death_prob) {
+    update_states = function(probs) {
       # Iterate over all grid cells in the world and determine infection probability based on
       # the number of already sick individuals in that grid cell.
       for (i in 1:self$size) {
@@ -72,9 +78,9 @@ World <- R6Class("World",
           num_sick <- sum(vapply(agents, function(agent) agent$state == "sick", logical(1)))
           # Now, probability of becoming sick is naively proportional to percentage of 
           # already sick individuals in a cell
-          sick_prob <- 1 - ((1 - beta) ^ num_sick)
+          probs['sick'] <- 1 - ((1 - probs['beta']) ^ num_sick)
           for (agent in agents) {
-            agent$update_state(sick_prob, recovery_prob, death_prob)
+            agent$update_state(probs)
           }
         }
       }
@@ -111,35 +117,20 @@ library(ggplot2)
 library(gganimate)
 library(progress)
 
-run_simulation <- function(size, num_steps, initial_immune, initial_sick, beta, recovery_prob, death_prob) {
-  stopifnot(recovery_prob + death_prob <= 1) # some simplistic input validation
+run_simulation <- function(size, num_steps, initial, prob) {
+  stopifnot(prob['recovery'] + prob['death'] <= 1) # some simplistic input validation
   pb <- progress_bar$new(total = num_steps + 1)
   
   world <- World$new(size)
   
   # Initialize agents
-  if (initial_healthy > 0) {
-    for (i in 1:initial_healthy) {
-      row <- sample(1:size, 1)
-      col <- sample(1:size, 1)
-      world$add_agent(row, col, Agent$new())
-    }
-  }
-  
-  # Introduce immune and sick agents
-  if (initial_immune > 0) {
-    for (i in 1:initial_immune) {
-      row <- sample(1:size, 1)
-      col <- sample(1:size, 1)
-      world$add_agent(row, col, Agent$new(state = "immune"))
-    }
-  }
-  
-  if (initial_sick > 0) {
-    for (i in 1:initial_sick) {
-      row <- sample(1:size, 1)
-      col <- sample(1:size, 1)
-      world$add_agent(row, col, Agent$new(state = "sick"))
+  for (state in c('healthy', 'immune', 'sick')) {
+    if (initial[state] > 0) {
+      for (i in 1:initial[state]) {
+        row <- sample(1:size, 1)
+        col <- sample(1:size, 1)
+        world$add_agent(row, col, Agent$new(state = state))
+      }
     }
   }
   
@@ -153,7 +144,7 @@ run_simulation <- function(size, num_steps, initial_immune, initial_sick, beta, 
   
   # Simulate one generation
   for (step in 2:num_steps + 1) {
-    world$update_states(beta, recovery_prob, death_prob)
+    world$update_states(prob)
     world$move_agents()
     counts <- world$get_counts()
     counts$step <- step
@@ -180,20 +171,29 @@ visualize_simulation <- function(results) {
   animate(p, nframes = length(unique(results$step)), fps = 2, renderer = gifski_renderer())
 }
 
+visualise_snapshot <- function(step = 1) {
+  # See a particular snapshot from simulation step N
+  results %>% filter(step == 1) %>% ggplot(aes(x = col, y = row)) +
+    geom_tile(aes(fill = sick)) +
+    scale_fill_gradient(low = "white", high = "red") +
+    theme_minimal()
+}
 
-
+###############################################################################
+initial <- c()
+probs <- c()
 # Parameters
 size <- 20                    # World size
 num_steps <- 50               # Number of generations
-initial_healthy <- 998
-initial_immune <- 0
-initial_sick <- 2
-beta <- 0.5                  # Transmission probability
-recovery_prob <- 0.1
-death_prob <- 0.05
+initial['healthy'] <- 998
+initial['immune'] <- 0
+initial['sick'] <- 2
+probs['beta'] <- 0.5           # Transmission probability
+probs['recovery'] <- 0.1
+probs['death'] <- 0.05
 
 # Run the simulation
-results <- run_simulation(size, num_steps, initial_immune, initial_sick, beta, recovery_prob, death_prob)
+results <- run_simulation(size, num_steps, initial, prob)
 
 library(tidyverse)
 results |> group_by(step) |> 
@@ -203,9 +203,3 @@ results |> group_by(step) |>
 
 # Visualize the results
 visualize_simulation(results)
-
-# See a particular snapshot from simulation step N
-results %>% filter(step == 1) %>% ggplot(aes(x = col, y = row)) +
-  geom_tile(aes(fill = sick)) +
-  scale_fill_gradient(low = "white", high = "red") +
-  theme_minimal()
