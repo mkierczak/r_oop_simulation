@@ -1,3 +1,15 @@
+tic <- function() {
+  tic_start <<- base::Sys.time()
+}
+
+toc <- function() {
+  dt <- base::difftime(base::Sys.time(), tic_start)
+  dt <- round(dt, digits = 1L)
+  message(paste(format(dt), "since tic()"))
+}
+
+################################################################################
+
 library(R6)
 
 Agent <- R6Class("Agent",
@@ -117,9 +129,9 @@ library(ggplot2)
 library(gganimate)
 library(progress)
 
-run_simulation <- function(size, num_steps, initial, prob) {
+run_simulation <- function(size, num_steps, initial, prob, progress = FALSE) {
   stopifnot(prob['recovery'] + prob['death'] <= 1) # some simplistic input validation
-  pb <- progress_bar$new(total = num_steps + 1)
+  if (progress) { pb <- progress_bar$new(total = num_steps + 1) }
   
   world <- World$new(size)
   
@@ -149,7 +161,7 @@ run_simulation <- function(size, num_steps, initial, prob) {
     counts <- world$get_counts()
     counts$step <- step
     results[[step]] <- counts
-    pb$tick()
+    if (progress) { pb$tick() }
   }
   
   results <- do.call(rbind, results)
@@ -193,13 +205,35 @@ probs['recovery'] <- 0.1
 probs['death'] <- 0.05
 
 # Run the simulation
-results <- run_simulation(size, num_steps, initial, prob)
 
 library(tidyverse)
-results |> group_by(step) |> 
-  summarise(n_sick = sum(sick), n_healthy = sum(healthy), n_immune = sum(immune), n_dead = sum(dead)) |> 
-  pivot_longer(starts_with("n_"), names_to = 'measure') |> 
-  ggplot(aes(x = step, y = value, col=measure)) + geom_line() + theme_minimal()
+runme <- function(size, num_steps, initial, probs) {
+  results <- run_simulation(size, num_steps, initial, probs)
+  results <- results |> group_by(step) |> 
+    summarise(n_sick = sum(sick), n_healthy = sum(healthy), n_immune = sum(immune), n_dead = sum(dead)) |> 
+    pivot_longer(starts_with("n_"), names_to = 'measure')
+}
+
+library(future)
+future::plan(multisession, workers=parallel::detectCores()-1)
+
+trajectories <- list()
+tic()
+for (i in 1:10) {
+  message(paste0("Trajectory ", i))
+  trajectories[[i]] <- future({ runme(size, num_steps, initial, probs) }, seed = 48)
+}
+toc()
+trajectories <- value(trajectories)
+toc()
+
+data <- bind_rows(lapply(seq_along(trajectories), function(i) {
+  trajectories[[i]] %>% mutate(trajectory = i)
+}))
+
+data |> ggplot(aes(x = step, y = value, col = measure, group = measure)) + 
+  geom_smooth() + 
+  theme_minimal()
 
 # Visualize the results
 visualize_simulation(results)
