@@ -236,4 +236,4 @@ data |> ggplot(aes(x = step, y = value, col = measure, group = measure)) +
   theme_minimal()
 
 # Visualize the results
-visualize_simulation(results)
+visualize_simulation(trajectories[[1]])
