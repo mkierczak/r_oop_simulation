@@ -35,12 +35,13 @@ visualize_frame <- function(results, what='sick', frame=1) {
 }
 
 ui <- dashboardPage(
-  dashboardHeader(title = 'Epidemics Simulator'),
+  dashboardHeader(title = 'Dr. Contagio'),
   dashboardSidebar(
     sidebarMenu(id = 'tabs',
       menuItem("Settings", tabName = "settings", icon = icon("sliders")),
       menuItem("Simulation", tabName = "simulation", icon = icon("dashboard")),
-      menuItem("Info", tabName = "info", icon = icon("info"))
+      menuItem("Info", tabName = "info", icon = icon("info")),
+      img(src = "www/plague_doctor_crow3.png", height='200px', width='200px')
     )
   ),
   dashboardBody(
