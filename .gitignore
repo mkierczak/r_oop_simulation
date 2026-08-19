@@ -3,3 +3,4 @@
 .RData
 .Ruserdata
 *disease_skeleton.R
+dev/*
