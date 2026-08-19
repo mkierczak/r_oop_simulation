@@ -34,91 +34,56 @@ visualize_frame <- function(results, what='sick', frame=1) {
   return(p)
 }
 
-ui <- dashboardPage(
-  dashboardHeader(title = 'Dr. Contagio'),
-  dashboardSidebar(
-    sidebarMenu(id = 'tabs',
-      menuItem("Settings", tabName = "settings", icon = icon("sliders")),
-      menuItem("Simulation", tabName = "simulation", icon = icon("dashboard")),
-      menuItem("Info", tabName = "info", icon = icon("info")),
-      img(src = "www/plague_doctor_crow3.png", height='200px', width='200px')
-    )
-  ),
-  dashboardBody(
-    tabItems(
-      tabItem(tabName = 'settings',
-        box(
-          sliderInput("world_size", "Size of the world:", 5, 100, 20),
-          textInput("pop_size", "Population size:", value = 1000, width = 100),
-          sliderInput("perc_sick", "Initial percentage of sick individuals:", 0, 100, 1),
-          sliderInput("perc_immune", "Initial percentage of immune individuals:", 0, 100, 0),
-          sliderInput("p_beta", "P(transmission):", 0, 100, 50),
-          sliderInput("p_recov", "P(recovery):", 0, 100, 10),
-          sliderInput("p_death", "P(death):", 0, 100, 5),
-          sliderInput("n_steps", "Number of steps:", 5, 100, 50) ,
-        ),
-        box(
-          h2('Simulation Parameters'),
-           textOutput('world_size'),
-           textOutput('pop_size'),
-           textOutput('perc_sick'),
-           textOutput('perc_immune'),
-           textOutput('p_beta'),
-           textOutput('p_recov'),
-           textOutput('p_death'),
-           textOutput('n_steps'),
-           br(),
-           actionButton("runBtn","Run"),
-        ),
-        box(
-          plotOutput('summaryPlot'),
-        )
-      ),
-      tabItem(tabName = 'simulation',
-        sliderInput("frame", "Step:", 0, 50, 0),
-        box(plotOutput('framePlot_naive', height = "300px")),
-        box(plotOutput('framePlot_sick', height = "300px")),
-        box(plotOutput('framePlot_immune', height = "300px")),
-        box(plotOutput('framePlot_dead', height = "300px"))
-      ),
-      tabItem(tabName = 'info',
-        h2('Info')
-      )
-    )
-  )
-)
-
 server <- function(input, output, session) { 
-  img <- png::readPNG('dr_plague.png')
+  img <- png::readPNG('www/plague_doctor_crow.png')
+  disease_data <- read.csv("diseases.csv", header = T, sep=',')
+
   output$summaryPlot <- renderPlot(grid::grid.raster(img))
   output$world_size <- reactive({
     paste0('- world size: ', input$world_size, ' x ', input$world_size, ' cells')
   })
-  output$pop_size <- reactive({
+  output$pop_size_out <- reactive({
     density <- round(as.numeric(input$pop_size) / as.numeric(input$world_size)^2, digits=2)
     paste0('- population size: ', input$pop_size, ' (', density, ' ind./cell)')
   })
-  output$perc_sick <- reactive({
+  output$perc_sick_out <- reactive({
     perc_sick <- as.numeric(input$perc_sick)/100
     n_sick <- floor(perc_sick * as.numeric(input$pop_size))
     paste0('- sick: ', n_sick, ' (',input$perc_sick,'%)')
   })
-  output$perc_immune <- reactive({
+  output$perc_immune_out <- reactive({
     perc_immune <- as.numeric(input$perc_immune)/100
     n_immune <- floor(perc_immune * as.numeric(input$pop_size))
     paste0('- immune: ', n_immune, ' (',input$perc_immune,'%)')
   })
-  output$p_beta <- reactive({
+  output$p_beta_out <- reactive({
     paste0('- P(transmission) = ', input$p_beta, '%')
   })
-  output$p_recov <- reactive({
+  output$p_recov_out <- reactive({
     paste0('- P(recovery) = ', input$p_recov, '%')
   })
-  output$p_death <- reactive({
+  output$p_death_out <- reactive({
     paste0('- P(death) = ', input$p_death, '%')
   })
-  output$n_steps <- reactive({
+  output$n_steps_out <- reactive({
     paste0('- N simulation steps: ', input$n_steps)
+  })
+
+  # Populate choices list
+  observe({
+    updateSelectInput(session, "disease_select",
+                      choices = disease_data$Disease)
+  })
+
+  observeEvent(input$disease_select, {
+    selected <- disease_data[disease_data$Disease == input$disease_select, ]
+
+    # Safely check that selection is valid
+    if (nrow(selected) == 1) {
+      updateNumericInput(session, "p_beta", value = selected$Beta*100)
+      updateNumericInput(session, "p_recov", value = selected$Recovery*100)
+      updateNumericInput(session, "p_death", value = selected$Death*100)
+    }
   })
 
   # Update slider for plotting
@@ -178,4 +143,4 @@ server <- function(input, output, session) {
   })
 
 }
-shinyApp(ui, server)
+
